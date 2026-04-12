@@ -1,0 +1,8 @@
+1.Why does the Qwen tokenizer use a larger vocabulary size than many other LLM tokenizers, and how does this affect multilingual compression?
+2.Compare the training configurations of Code-Qwen and base Qwen models.
+3.What hyperparameters are used during supervised fine-tuning of Qwen-Chat models?
+4.How does RLHF improve Qwen chat model performance compared to SFT, and what evidence from human evaluation supports this?
+5. How does Qwen-14B perform compared to other large models on standard benchmarks, and what insights can be drawn from the results?
+6. What techniques does Qwen use to handle long-context inputs, and how do the results validate their effectiveness?
+7. How do different training strategies (SFT vs RLHF vs base models) affect Qwen’s performance across human evaluation and benchmark tasks?
+8. Explain training and different fine-tuning methods applied for training Qwen Model.
