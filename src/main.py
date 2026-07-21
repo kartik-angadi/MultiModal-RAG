@@ -8,7 +8,7 @@ Two entry modes:
     2. JSON path only  → skips parsing, starts directly from ingestion (faster, for demos)
 
 Chunk size and overlap:
-    - Each file type has its own recommended defaults (defined in CHUNK_DEFAULTS below).
+    - Each file type has its own re commended defaults (defined in CHUNK_DEFAULTS below).
     - If CHUNK_SIZE / CHUNK_OVERLAP are set to None, the file-type default is used.
     - If the file type is CSV, chunk settings are ignored (CSV parser doesn't use them).
     - MainParser's own fallback is chunk_size=3000, chunk_overlap=1000 if nothing is passed.
@@ -26,7 +26,8 @@ from ingest import IngestSession
 from retriever import RetrieverSession
 from response_generator import ResponseGenerator
 from utils import print_response
-
+from dotenv import load_dotenv
+load_dotenv()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Per-file-type chunk defaults
@@ -50,7 +51,7 @@ CHUNK_DEFAULTS = {
 # Set INPUT_FILE to None to skip parsing and use an existing JSON directly.
 # INPUT_FILE = r"D:\SL_Projects\Projects\AI_Python\Qwen\Data\Papers\qwen1_technical_report.pdf"
 INPUT_FILE = None
-JSON_PATH  = r"D:\SL_Projects\Projects\AI_Python\Multimodal-RAG\dump\output_test_sample.json"
+JSON_PATH  = r"D:\SL_Projects\Projects\Multimodal-RAG\MultiModal-RAG\data\processed\Qwen_technical_report.json"
 
 # Chunk settings — set to None to use the per-file-type defaults above.
 # For Streamlit UI these will come from sliders; None means "use the default".
@@ -58,8 +59,15 @@ CHUNK_SIZE    = None
 CHUNK_OVERLAP = None
 
 # API keys
-COHERE_API_KEY = os.environ.get("COHERE_API_KEY", "xDB2CZr31oTonsAsJip3RN4gnMHlu3KgFlSfL11z")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyC6e8xt1CKOfv8sPljQN79aWZHP076LiwY")
+
+COHERE_API_KEY = os.environ.get("COHERE_API_KEY")
+if not COHERE_API_KEY:
+    raise RuntimeError("COHERE_API_KEY not set — copy .env.example to .env and fill it in.")
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    raise RuntimeError("GEMINI_API_KEY not set — copy .env.example to .env and fill it in.")
+
 
 # Query
 QUERY = "Explain how the design of the Qwen tokenizer differs from tokenizers used in LLaMA and XLM-R, and why these differences improve multilingual compression efficiency."
@@ -151,7 +159,7 @@ def stage_retrieve(session, query: str, cohere_api_key: str) -> list[dict]:
     print(f"  Query        : {query}")
 
     t0        = time.perf_counter()
-    retriever = RetrieverSession(ingest_session=session, cohere_api_key=cohere_api_key)
+    retriever = RetrieverSession(ingest_session=session, cohere_api_key=COHERE_API_KEY)
     results   = retriever.query(query)
     print(f"  Chunks found : {len(results)}")
     print(f"  Done in {time.perf_counter() - t0:.2f}s")
@@ -165,7 +173,7 @@ def stage_generate(json_path: str, query: str, results: list[dict], gemini_api_k
     print("=" * 60)
 
     t0        = time.perf_counter()
-    generator = ResponseGenerator(json_path=json_path, gemini_api_key=gemini_api_key)
+    generator = ResponseGenerator(json_path=json_path, gemini_api_key=GEMINI_API_KEY)
     response  = generator.generate(query=query, retriever_results=results)
     print(f"  Answer length: {len(response['answer'])} chars")
     print(f"  Figures      : {len(response['figures'])}")
@@ -181,8 +189,6 @@ def stage_generate(json_path: str, query: str, results: list[dict], gemini_api_k
 def run_pipeline(
     json_path: str,
     query: str,
-    cohere_api_key: str,
-    gemini_api_key: str,
     input_file: str | None = None,
     chunk_size: int | None = None,
     chunk_overlap: int | None = None,
@@ -194,8 +200,6 @@ def run_pipeline(
     Args:
         json_path:      Path to extraction JSON (output if parsing, input if skipping).
         query:          User's question.
-        cohere_api_key: Cohere API key for retrieval.
-        gemini_api_key: Gemini API key for generation.
         input_file:     Path to source file (PDF/DOCX/TXT/CSV/PPTX). None = skip parsing.
         chunk_size:     Override chunk size. None = use per-file-type default.
         chunk_overlap:  Override chunk overlap. None = use per-file-type default.
@@ -215,10 +219,10 @@ def run_pipeline(
     session = stage_ingest(json_path)
 
     # Stage 3 — Retrieve
-    results = stage_retrieve(session, query, cohere_api_key)
+    results = stage_retrieve(session, query, COHERE_API_KEY)
 
     # Stage 4 — Generate
-    response = stage_generate(json_path, query, results, gemini_api_key)
+    response = stage_generate(json_path, query, results, GEMINI_API_KEY)
 
     print(f"\nTotal pipeline time: {time.perf_counter() - pipeline_start:.2f}s")
     return response
@@ -228,8 +232,6 @@ def main():
     response = run_pipeline(
         json_path=JSON_PATH,
         query=QUERY,
-        cohere_api_key=COHERE_API_KEY,
-        gemini_api_key=GEMINI_API_KEY,
         input_file=INPUT_FILE,       # set to None to skip parsing
         chunk_size=CHUNK_SIZE,       # None = use CHUNK_DEFAULTS for the file type
         chunk_overlap=CHUNK_OVERLAP, # None = use CHUNK_DEFAULTS for the file type

@@ -10,13 +10,16 @@ from typing import List, Dict
 from langchain_chroma import Chroma
 from langchain_cohere import CohereEmbeddings
 from langchain_core.documents import Document
+from dotenv import load_dotenv
+load_dotenv()
 
 
 # ------------------------------------------------
 # Config
 # ------------------------------------------------
-
-COHERE_API_KEY = os.environ.get("COHERE_API_KEY", "xDB2CZr31oTonsAsJip3RN4gnMHlu3KgFlSfL11z")
+COHERE_API_KEY = os.environ.get("COHERE_API_KEY")
+if not COHERE_API_KEY:
+    raise RuntimeError("Cohere API not set — copy .env.example to .env and fill it in.")
 COLLECTION_NAME = "multimodal_rag"
 ID_KEY = "doc_id"
 

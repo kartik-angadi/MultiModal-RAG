@@ -144,7 +144,7 @@ if __name__ == "__main__":
 
     retriever = RetrieverSession(
         ingest_session=session,
-        cohere_api_key="xDB2CZr31oTonsAsJip3RN4gnMHlu3KgFlSfL11z",
+        cohere_api_key="USE YOUR COHERE_API KEY HERE FOR TESTING PURPOSE",
     )
 
     results = retriever.query("What is the architecture?")

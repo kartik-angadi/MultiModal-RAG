@@ -1,9 +1,8 @@
-
 """
 ui.py
 -----
 Streamlit UI for the Multimodal RAG pipeline.
- 
+
 Two-step flow:
     Step 1 — Setup & Index:
         - Upload files (PDF/DOCX/TXT/CSV/PPTX) OR upload an extracted JSON
@@ -11,18 +10,22 @@ Two-step flow:
         - If JSON uploaded: ingest directly (skip parsing)
         - Output JSON path shown only when files are uploaded (not needed for JSON mode)
         - Chunk size/overlap sliders shown only for non-CSV file uploads
- 
+
     Step 2 — Query:
         - Unlocked only after indexing is complete
         - User types a question and clicks Ask
         - Shows answer, figures (rendered from base64), tables (rendered from HTML)
- 
+
+API keys (COHERE_API_KEY, GEMINI_API_KEY) are read from the environment —
+set them in a .env file (see .env.example) rather than entering them in the UI.
+
 Run:
     streamlit run ui.py
 """
 
 # ── Warning suppression ───────────────────────────────────────────────────────
 import warnings
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -36,7 +39,6 @@ import time
 import streamlit as st
 
 from main import stage_parse, stage_ingest, stage_retrieve, stage_generate, CHUNK_DEFAULTS
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Page config
@@ -55,15 +57,15 @@ st.set_page_config(
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
- 
+
     html, body, [class*="css"] { font-family: 'IBM Plex Sans', sans-serif; }
     .stApp { background-color: #0f1117; color: #e8e8e8; }
- 
+
     section[data-testid="stSidebar"] {
         background-color: #161b27;
         border-right: 1px solid #2a2f3d;
     }
- 
+
     .section-label {
         font-family: 'IBM Plex Mono', monospace;
         font-size: 0.7rem;
@@ -72,7 +74,7 @@ st.markdown("""
         color: #4a9eff;
         margin-bottom: 0.5rem;
     }
- 
+
     .step-header {
         font-family: 'IBM Plex Mono', monospace;
         font-size: 0.75rem;
@@ -86,10 +88,10 @@ st.markdown("""
         margin-bottom: 1rem;
         display: inline-block;
     }
- 
+
     .step-header.active { color: #4a9eff; border-color: #4a9eff; }
     .step-header.done   { color: #3ddc97; border-color: #3ddc97; }
- 
+
     .answer-box {
         background-color: #161b27;
         border: 1px solid #2a2f3d;
@@ -102,7 +104,7 @@ st.markdown("""
         white-space: pre-wrap;
         font-family: 'IBM Plex Sans', sans-serif;
     }
- 
+
     .fig-caption {
         font-size: 0.8rem;
         color: #8892a4;
@@ -110,7 +112,7 @@ st.markdown("""
         font-style: italic;
         line-height: 1.5;
     }
- 
+
     .reasoning-box {
         background-color: #1a1f2e;
         border: 1px solid #2a2f3d;
@@ -120,7 +122,7 @@ st.markdown("""
         color: #8892a4;
         font-style: italic;
     }
- 
+
     .stage-log {
         font-family: 'IBM Plex Mono', monospace;
         font-size: 0.78rem;
@@ -130,7 +132,7 @@ st.markdown("""
         padding: 0.5rem 1rem;
         margin: 0.15rem 0;
     }
- 
+
     .indexed-badge {
         font-family: 'IBM Plex Mono', monospace;
         font-size: 0.75rem;
@@ -140,9 +142,33 @@ st.markdown("""
         border-radius: 4px;
         padding: 0.4rem 0.8rem;
     }
- 
+
+    .key-badge-ok {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.72rem;
+        color: #3ddc97;
+        background: #0d1f16;
+        border: 1px solid #1f4d33;
+        border-radius: 4px;
+        padding: 0.35rem 0.7rem;
+        margin-bottom: 0.3rem;
+        display: block;
+    }
+
+    .key-badge-missing {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.72rem;
+        color: #ff6b6b;
+        background: #2a1414;
+        border: 1px solid #4d1f1f;
+        border-radius: 4px;
+        padding: 0.35rem 0.7rem;
+        margin-bottom: 0.3rem;
+        display: block;
+    }
+
     hr { border-color: #2a2f3d; }
- 
+
     .table-wrapper {
         overflow-x: auto;
         background: #161b27;
@@ -164,16 +190,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Session state initialisation
 # ─────────────────────────────────────────────────────────────────────────────
 
-if "indexed"      not in st.session_state: st.session_state.indexed      = False
-if "session"      not in st.session_state: st.session_state.session      = None
-if "json_path"    not in st.session_state: st.session_state.json_path    = None
-if "index_info"   not in st.session_state: st.session_state.index_info   = ""
-
+if "indexed" not in st.session_state: st.session_state.indexed = False
+if "session" not in st.session_state: st.session_state.session = None
+if "json_path" not in st.session_state: st.session_state.json_path = None
+if "index_info" not in st.session_state: st.session_state.index_info = ""
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -220,28 +244,55 @@ def display_html_table(html: str, caption: str, table_id: str):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Sidebar — API keys (always visible)
+# API keys — loaded from environment (.env), not entered in the UI
+# ─────────────────────────────────────────────────────────────────────────────
+
+cohere_key = os.environ.get("COHERE_API_KEY")
+if not cohere_key:
+    raise RuntimeError("COHERE_API_KEY not set — copy .env.example to .env and fill it in.")
+
+gemini_key = os.environ.get("GEMINI_API_KEY")
+if not gemini_key:
+    raise RuntimeError("GEMINI_API_KEY not set — copy .env.example to .env and fill it in.")
+
+#
+# cohere_key = os.environ.get("COHERE_API_KEY", "")
+# gemini_key = os.environ.get("GEMINI_API_KEY", "")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sidebar
 # ─────────────────────────────────────────────────────────────────────────────
 
 with st.sidebar:
     st.markdown("## 🔍 Multimodal RAG")
     st.markdown("---")
 
-    st.markdown('<p class="section-label">API Keys</p>', unsafe_allow_html=True)
-    cohere_key = st.text_input("Cohere API Key", type="password", value=os.environ.get("COHERE_API_KEY", ""))
-    gemini_key = st.text_input("Gemini API Key", type="password", value=os.environ.get("GEMINI_API_KEY", ""))
+    st.markdown('<p class="section-label">Environment</p>', unsafe_allow_html=True)
+
+    if cohere_key:
+        st.markdown('<span class="key-badge-ok">✓ COHERE_API_KEY loaded</span>', unsafe_allow_html=True)
+    else:
+        st.markdown('<span class="key-badge-missing">✗ COHERE_API_KEY missing</span>', unsafe_allow_html=True)
+
+    if gemini_key:
+        st.markdown('<span class="key-badge-ok">✓ GEMINI_API_KEY loaded</span>', unsafe_allow_html=True)
+    else:
+        st.markdown('<span class="key-badge-missing">✗ GEMINI_API_KEY missing</span>', unsafe_allow_html=True)
+
+    if not (cohere_key and gemini_key):
+        st.caption("Add missing keys to your `.env` file (see `.env.example`) and restart the app.")
 
     # Show indexed status in sidebar
     if st.session_state.indexed:
         st.markdown("---")
-        st.markdown(f'<div class="indexed-badge">✓ Index ready — {st.session_state.index_info}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="indexed-badge">✓ Index ready — {st.session_state.index_info}</div>',
+                    unsafe_allow_html=True)
         if st.button("Reset / Re-index", use_container_width=True):
-            st.session_state.indexed    = False
-            st.session_state.session    = None
-            st.session_state.json_path  = None
+            st.session_state.indexed = False
+            st.session_state.session = None
+            st.session_state.json_path = None
             st.session_state.index_info = ""
             st.rerun()
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 1 — Setup & Index
@@ -260,9 +311,9 @@ if not st.session_state.indexed:
     )
 
     uploaded_files = None
-    uploaded_json  = None
-    chunk_size     = None
-    chunk_overlap  = None
+    uploaded_json = None
+    chunk_size = None
+    chunk_overlap = None
     json_output_path = None
 
     if input_mode == "Upload files (PDF / DOCX / TXT / CSV / PPTX)":
@@ -273,7 +324,7 @@ if not st.session_state.indexed:
         )
 
         if uploaded_files:
-            exts          = [get_file_ext(f.name) for f in uploaded_files]
+            exts = [get_file_ext(f.name) for f in uploaded_files]
             show_chunk_ui = any(e != ".csv" for e in exts)
 
             col_path, _ = st.columns([2, 1])
@@ -286,9 +337,9 @@ if not st.session_state.indexed:
                 )
 
             if show_chunk_ui:
-                primary_ext  = next((e for e in exts if e != ".csv"), ".pdf")
-                defaults     = CHUNK_DEFAULTS.get(primary_ext, {"chunk_size": 3000, "chunk_overlap": 1000})
-                default_size = defaults["chunk_size"]    or 3000
+                primary_ext = next((e for e in exts if e != ".csv"), ".pdf")
+                defaults = CHUNK_DEFAULTS.get(primary_ext, {"chunk_size": 3000, "chunk_overlap": 1000})
+                default_size = defaults["chunk_size"] or 3000
                 default_ovlp = defaults["chunk_overlap"] or 1000
 
                 st.markdown('<p class="section-label">Chunking</p>', unsafe_allow_html=True)
@@ -298,7 +349,8 @@ if not st.session_state.indexed:
                 with col1:
                     chunk_size = st.slider("Chunk size", min_value=500, max_value=20000, value=default_size, step=500)
                 with col2:
-                    chunk_overlap = st.slider("Chunk overlap", min_value=0, max_value=chunk_size // 2, value=min(default_ovlp, chunk_size // 2), step=100)
+                    chunk_overlap = st.slider("Chunk overlap", min_value=0, max_value=chunk_size // 2,
+                                              value=min(default_ovlp, chunk_size // 2), step=100)
 
     else:
         uploaded_json = st.file_uploader("Upload extraction JSON", type=["json"])
@@ -310,7 +362,7 @@ if not st.session_state.indexed:
     if index_btn:
         # Validate
         if not cohere_key:
-            st.error("Please provide your Cohere API key in the sidebar.")
+            st.error("COHERE_API_KEY is not set. Add it to your .env file and restart the app.")
             st.stop()
         if input_mode == "Upload files (PDF / DOCX / TXT / CSV / PPTX)" and not uploaded_files:
             st.error("Please upload at least one file.")
@@ -321,17 +373,19 @@ if not st.session_state.indexed:
 
         status_area = st.empty()
 
+
         def log(msg: str):
             status_area.markdown(f'<div class="stage-log">▸ {msg}</div>', unsafe_allow_html=True)
+
 
         try:
             with st.spinner("Indexing..."):
                 t0 = time.perf_counter()
 
                 if input_mode == "Upload files (PDF / DOCX / TXT / CSV / PPTX)":
-                    saved_paths  = save_uploaded_files(uploaded_files)
-                    file_arg     = saved_paths[0] if len(saved_paths) == 1 else saved_paths
-                    json_path    = json_output_path or os.path.join(tempfile.gettempdir(), "rag_output.json")
+                    saved_paths = save_uploaded_files(uploaded_files)
+                    file_arg = saved_paths[0] if len(saved_paths) == 1 else saved_paths
+                    json_path = json_output_path or os.path.join(tempfile.gettempdir(), "rag_output.json")
 
                     log("Stage 1 / 2 — Parsing documents...")
                     first_file = file_arg if isinstance(file_arg, str) else file_arg[0]
@@ -357,9 +411,9 @@ if not st.session_state.indexed:
                 log(f"✓ Indexed in {elapsed:.1f}s")
 
                 # Store in session state
-                st.session_state.indexed    = True
-                st.session_state.session    = session
-                st.session_state.json_path  = json_path
+                st.session_state.indexed = True
+                st.session_state.session = session
+                st.session_state.json_path = json_path
                 st.session_state.index_info = info
 
         except Exception as e:
@@ -370,7 +424,6 @@ if not st.session_state.indexed:
 
 else:
     st.success(f"✓ Index ready — {st.session_state.index_info}")
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 2 — Query  (only shown after indexing)
@@ -383,7 +436,8 @@ st.markdown(f'<span class="step-header {step2_label}">Step 2 — Ask a question<
 if not st.session_state.indexed:
     st.caption("Complete Step 1 to unlock querying.")
 else:
-    query   = st.text_area("query", placeholder="e.g. Explain the architecture of the model...", height=80, label_visibility="collapsed")
+    query = st.text_area("query", placeholder="e.g. Explain the architecture of the model...", height=80,
+                         label_visibility="collapsed")
     ask_btn = st.button("Ask", type="primary", use_container_width=False)
 
     if ask_btn:
@@ -391,13 +445,15 @@ else:
             st.error("Please enter a question.")
             st.stop()
         if not gemini_key:
-            st.error("Please provide your Gemini API key in the sidebar.")
+            st.error("GEMINI_API_KEY is not set. Add it to your .env file and restart the app.")
             st.stop()
 
         status_area = st.empty()
 
+
         def log(msg: str):
             status_area.markdown(f'<div class="stage-log">▸ {msg}</div>', unsafe_allow_html=True)
+
 
         try:
             with st.spinner("Generating answer..."):
@@ -449,6 +505,6 @@ else:
         st.markdown("---")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Chunks retrieved", len(results))
-        c2.metric("Figures shown",    len(response.get("figures", [])))
-        c3.metric("Tables shown",     len(response.get("tables",  [])))
-        c4.metric("Time (s)",         f"{elapsed:.1f}")
+        c2.metric("Figures shown", len(response.get("figures", [])))
+        c3.metric("Tables shown", len(response.get("tables", [])))
+        c4.metric("Time (s)", f"{elapsed:.1f}")

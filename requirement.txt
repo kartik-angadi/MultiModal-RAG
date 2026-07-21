@@ -1,0 +1,27 @@
+# Document parsing
+unstructured[all-docs]
+unstructured-pytesseract
+
+# Chunking
+langchain-text-splitters
+
+# Vector store + retrieval
+langchain-core
+langchain-community
+langchain-classic
+langchain-chroma
+langchain-cohere
+chromadb
+rank-bm25
+
+# Generation
+google-generativeai
+
+# Tabular parsing
+pandas
+
+# UI
+streamlit
+
+# Config
+python-dotenv

@@ -18,10 +18,14 @@ Usage:
 
 import os
 import google.generativeai as genai
+from dotenv import load_dotenv
+load_dotenv()
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyC6e8xt1CKOfv8sPljQN79aWZHP076LiwY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    raise RuntimeError("GEMINI_API_KEY not set — copy .env.example to .env and fill it in.")
 GEMINI_MODEL = "gemini-2.5-flash"
 
 # ── Tool Definition ───────────────────────────────────────────────────────────
